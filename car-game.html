@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forest Car Race</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #1b2a1a;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #fff;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  h1 { margin: 12px 0 4px; font-size: 22px; }
+  #score { font-size: 16px; margin-bottom: 6px; }
+  #gameCanvas {
+    background: #2e7d32;
+    border: 4px solid #5d4037;
+    border-radius: 8px;
+    display: block;
+    touch-action: none;
+  }
+  #controls {
+    display: flex;
+    gap: 40px;
+    margin-top: 14px;
+  }
+  .ctrl-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: none;
+    background: #455a64;
+    color: #fff;
+    font-size: 32px;
+    box-shadow: 0 4px 0 #263238;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ctrl-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #263238;
+  }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  #wrap { position: relative; }
+  #restartBtn {
+    margin-top: 14px;
+    padding: 10px 22px;
+    font-size: 16px;
+    border: none;
+    border-radius: 6px;
+    background: #ffb300;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<h1>🌲 Forest Car Race 🌲</h1>
+<div id="score">Score: 0</div>
+<div id="wrap">
+  <canvas id="gameCanvas" width="360" height="560"></canvas>
+  <div id="overlay">
+    <div style="font-size:24px;">💥 Game Over!</div>
+    <div id="finalScore" style="margin-top:6px;"></div>
+    <button id="restartBtn">Restart</button>
+  </div>
+</div>
+<div id="controls">
+  <button class="ctrl-btn" id="leftBtn">◀</button>
+  <button class="ctrl-btn" id="rightBtn">▶</button>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const roadX = 40, roadW = W - 80;
+const laneCount = 3;
+const laneW = roadW / laneCount;
+
+let car, obstacles, trees, speed, score, running, lastObstacleY;
+
+function laneCenter(lane) {
+  return roadX + laneW * lane + laneW / 2;
+}
+
+function initGame() {
+  car = { lane: 1, x: laneCenter(1), y: H - 100, w: 30, h: 52, targetX: laneCenter(1) };
+  obstacles = [];
+  trees = [];
+  for (let i = 0; i < 10; i++) {
+    trees.push(makeTree(Math.random() * H));
+  }
+  speed = 4;
+  score = 0;
+  running = true;
+  lastObstacleY = -200;
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('score').textContent = 'Score: 0';
+}
+
+function makeTree(y) {
+  const side = Math.random() < 0.5 ? 0 : 1;
+  const x = side === 0
+    ? Math.random() * (roadX - 30) + 5
+    : roadX + roadW + Math.random() * (roadX - 30) + 5;
+  return { x, y, size: 18 + Math.random() * 14 };
+}
+
+function makeObstacle() {
+  const lane = Math.floor(Math.random() * laneCount);
+  const colors = ['#e53935', '#1e88e5', '#fdd835', '#8e24aa'];
+  obstacles.push({
+    lane,
+    x: laneCenter(lane),
+    y: -80,
+    w: 28,
+    h: 48,
+    color: colors[Math.floor(Math.random() * colors.length)]
+  });
+}
+
+function moveCar(dir) {
+  if (!running) return;
+  car.lane = Math.min(laneCount - 1, Math.max(0, car.lane + dir));
+  car.targetX = laneCenter(car.lane);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') moveCar(-1);
+  if (e.key === 'ArrowRight') moveCar(1);
+});
+document.getElementById('leftBtn').addEventListener('click', () => moveCar(-1));
+document.getElementById('rightBtn').addEventListener('click', () => moveCar(1));
+document.getElementById('restartBtn').addEventListener('click', initGame);
+
+function drawForestBackground() {
+  // grass / ground
+  ctx.fillStyle = '#2e7d32';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1b5e20';
+  ctx.fillRect(0, 0, roadX, H);
+  ctx.fillRect(roadX + roadW, 0, roadX, H);
+
+  // trees on sides
+  trees.forEach(t => {
+    drawTree(t.x, t.y, t.size);
+  });
+
+  // road
+  ctx.fillStyle = '#424242';
+  ctx.fillRect(roadX, 0, roadW, H);
+
+  // lane dashes
+  ctx.strokeStyle = '#ffeb3b';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([20, 20]);
+  for (let i = 1; i < laneCount; i++) {
+    const x = roadX + laneW * i;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function drawTree(x, y, size) {
+  ctx.fillStyle = '#6d4c41';
+  ctx.fillRect(x - size * 0.1, y, size * 0.2, size * 0.6);
+  ctx.fillStyle = '#2e7d32';
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x - size * 0.7, y);
+  ctx.lineTo(x + size * 0.7, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(x, y - size * 1.6);
+  ctx.lineTo(x - size * 0.55, y - size * 0.6);
+  ctx.lineTo(x + size * 0.55, y - size * 0.6);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawCar(x, y, w, h, body, win = '#bbdefb') {
+  // simple shaded car for rivals
+  ctx.save();
+  ctx.translate(x, y);
+  const grad = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+  grad.addColorStop(0, shade(body, -25));
+  grad.addColorStop(0.5, body);
+  grad.addColorStop(1, shade(body, -25));
+  ctx.fillStyle = grad;
+  roundRect(-w / 2, -h / 2, w, h, 8);
+  ctx.fill();
+  ctx.fillStyle = win;
+  roundRect(-w / 2 + 5, -h / 2 + 8, w - 10, h * 0.28, 4);
+  ctx.fill();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(-w / 2 - 3, -h / 2 + 5, 5, 12);
+  ctx.fillRect(w / 2 - 2, -h / 2 + 5, 5, 12);
+  ctx.fillRect(-w / 2 - 3, h / 2 - 17, 5, 12);
+  ctx.fillRect(w / 2 - 2, h / 2 - 17, 5, 12);
+  ctx.restore();
+}
+
+function shade(hex, amt) {
+  const c = parseInt(hex.slice(1), 16);
+  let r = (c >> 16) + amt, g = ((c >> 8) & 0xff) + amt, b = (c & 0xff) + amt;
+  r = Math.min(255, Math.max(0, r));
+  g = Math.min(255, Math.max(0, g));
+  b = Math.min(255, Math.max(0, b));
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawBMW(x, y, w, h) {
+  ctx.save();
+  ctx.translate(x, y);
+
+  // drop shadow for 3D lift
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(0, h / 2 + 4, w / 2 + 2, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const bodyTop = '#1c54b2';
+  const bodyMid = '#2f6fe0';
+  const bodyLight = '#6fa3f5';
+
+  // main body with gradient for curvature
+  const bodyGrad = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+  bodyGrad.addColorStop(0, bodyTop);
+  bodyGrad.addColorStop(0.45, bodyLight);
+  bodyGrad.addColorStop(0.55, bodyLight);
+  bodyGrad.addColorStop(1, bodyTop);
+  ctx.fillStyle = bodyGrad;
+  roundRect(-w / 2, -h / 2, w, h, w * 0.28);
+  ctx.fill();
+
+  // side accent / shut lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 1;
+  roundRect(-w / 2, -h / 2, w, h, w * 0.28);
+  ctx.stroke();
+
+  // hood highlight (top)
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  roundRect(-w / 2 + w * 0.12, -h / 2 + 2, w * 0.76, h * 0.16, 6);
+  ctx.fill();
+
+  // windshield + roof (kidney-grille BMW front faces up/forward)
+  ctx.fillStyle = '#142233';
+  roundRect(-w * 0.34, -h * 0.30, w * 0.68, h * 0.30, 5);
+  ctx.fill();
+  // windshield glass shine
+  const glassGrad = ctx.createLinearGradient(0, -h * 0.30, 0, 0);
+  glassGrad.addColorStop(0, '#bfe3ff');
+  glassGrad.addColorStop(1, '#345');
+  ctx.fillStyle = glassGrad;
+  roundRect(-w * 0.30, -h * 0.27, w * 0.60, h * 0.13, 4);
+  ctx.fill();
+
+  // rear window
+  ctx.fillStyle = '#142233';
+  roundRect(-w * 0.30, h * 0.02, w * 0.60, h * 0.14, 4);
+  ctx.fill();
+
+  // BMW kidney grilles (front, top of car)
+  ctx.fillStyle = '#0d0d0d';
+  roundRect(-w * 0.16, -h / 2 + 2, w * 0.13, h * 0.10, 2);
+  ctx.fill();
+  roundRect(w * 0.03, -h / 2 + 2, w * 0.13, h * 0.10, 2);
+  ctx.fill();
+
+  // headlights
+  ctx.fillStyle = '#fff7cc';
+  ctx.beginPath();
+  ctx.ellipse(-w * 0.30, -h / 2 + 7, 4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(w * 0.30, -h / 2 + 7, 4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // taillights
+  ctx.fillStyle = '#e53935';
+  ctx.fillRect(-w / 2 + 3, h / 2 - 12, 5, 9);
+  ctx.fillRect(w / 2 - 8, h / 2 - 12, 5, 9);
+
+  // side mirrors
+  ctx.fillStyle = bodyTop;
+  ctx.fillRect(-w / 2 - 4, -h * 0.12, 4, 7);
+  ctx.fillRect(w / 2, -h * 0.12, 4, 7);
+
+  // wheels (visible edges, gives 3D side feel)
+  ctx.fillStyle = '#111';
+  ctx.fillRect(-w / 2 - 2, -h * 0.30, 4, 12);
+  ctx.fillRect(w / 2 - 2, -h * 0.30, 4, 12);
+  ctx.fillRect(-w / 2 - 2, h * 0.08, 4, 12);
+  ctx.fillRect(w / 2 - 2, h * 0.08, 4, 12);
+
+  // BMW roundel hint on hood
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(0, -h / 2 + h * 0.18, 2.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#1c54b2';
+  ctx.beginPath();
+  ctx.arc(0, -h / 2 + h * 0.18, 2.6, Math.PI, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function update() {
+  if (!running) return;
+
+  trees.forEach(t => {
+    t.y += speed * 0.8;
+    if (t.y > H + 20) Object.assign(t, makeTree(-20));
+  });
+
+  car.x += (car.targetX - car.x) * 0.25;
+
+  lastObstacleY += speed;
+  if (lastObstacleY > 90) {
+    makeObstacle();
+    lastObstacleY = 0;
+  }
+
+  obstacles.forEach(o => (o.y += speed));
+  obstacles = obstacles.filter(o => {
+    if (o.y > H + 60) {
+      score += 1;
+      document.getElementById('score').textContent = 'Score: ' + score;
+      return false;
+    }
+    return true;
+  });
+
+  obstacles.forEach(o => {
+    if (
+      Math.abs(o.x - car.x) < (o.w + car.w) / 2 - 8 &&
+      Math.abs(o.y - car.y) < (o.h + car.h) / 2 - 8
+    ) {
+      endGame();
+    }
+  });
+
+  speed += 0.0015;
+}
+
+function endGame() {
+  running = false;
+  document.getElementById('overlay').style.display = 'flex';
+  document.getElementById('finalScore').textContent = 'Score: ' + score;
+}
+
+function draw() {
+  drawForestBackground();
+  obstacles.forEach(o => drawCar(o.x, o.y, o.w, o.h, o.color));
+  drawBMW(car.x, car.y, car.w, car.h);
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+initGame();
+loop();
+</script>
+</body>
+</html>
